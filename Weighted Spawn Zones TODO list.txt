@@ -1,0 +1,7 @@
+SAVED ENTITIES
+A list of saved entities which can be used in spawn zones
+You can edit the name and description of each one (both shown in tooltip)
+
+When any part of any zone in a definition is loaded, that definition queues possible spawn points and entities, up to its limits
+Queued spawns are not actually attempted until their block positions are loaded (check on chunk load)
+When an attempt fails, the entity is kept and the position is recalculated up to "sameEntityAttempts" times
