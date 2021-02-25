@@ -13,6 +13,7 @@ import net.minecraftforge.fml.common.network.ByteBufUtils;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.UUID;
 
 public class CWeightedEntity extends Component
 {
@@ -20,7 +21,8 @@ public class CWeightedEntity extends Component
     public int weight = 1;
     public CWeightedSpawnZone queuedZone = null;
     public BlockPos queuedPos = null;
-    public EntityLiving queuedEntity = null;
+    public EntityLiving entity = null;
+    public UUID entityID = null;
 
 
     @Override

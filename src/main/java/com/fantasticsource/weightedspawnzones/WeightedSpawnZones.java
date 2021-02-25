@@ -19,6 +19,7 @@ public class WeightedSpawnZones
     public static void preInit(FMLPreInitializationEvent event)
     {
         MinecraftForge.EVENT_BUS.register(WeightedSpawnZones.class);
+        MinecraftForge.EVENT_BUS.register(CSpawnDefinition.class);
     }
 
     @SubscribeEvent

@@ -1,40 +1,182 @@
 package com.fantasticsource.weightedspawnzones;
 
+import com.fantasticsource.mctools.MCTools;
 import com.fantasticsource.tools.Tools;
 import com.fantasticsource.tools.component.CBoolean;
 import com.fantasticsource.tools.component.CInt;
 import com.fantasticsource.tools.component.Component;
 import io.netty.buffer.ByteBuf;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.event.ForgeEventFactory;
+import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.world.ChunkEvent;
+import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.eventhandler.Event;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.*;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.UUID;
+
+import static com.fantasticsource.weightedspawnzones.WeightedSpawnZones.MODID;
 
 public class CSpawnDefinition extends Component
 {
+    protected static final HashMap<World, ArrayList<CSpawnDefinition>> SPAWN_DEFINITIONS = new HashMap<>();
+    protected static final HashMap<UUID, CWeightedEntity> UNFOUND_ENTITIES = new HashMap<>();
+
     public World world;
     public HashSet<CWeightedSpawnZone> weightedZones = new HashSet<>();
     public HashSet<CWeightedEntity> weightedEntities = new HashSet<>(), queuedAttempts = new HashSet<>(), failedSpawns = new HashSet<>();
-    public LinkedHashMap<UUID, CWeightedEntity> spawnedEntities = new LinkedHashMap<>();
     public HashSet<Long> intersectingChunks = new HashSet<>();
     public HashMap<CWeightedEntity, Integer> failedAttemptCounts = new HashMap<>();
+
+    public ArrayList<CWeightedEntity> spawnedEntities = new ArrayList<>();
+    protected ArrayList<Chunk> loadedChunks = new ArrayList<>();
 
     public boolean spawnWithinPlayerLOS = false;
     public int sameEntityAttempts = 10, limit = 10;
 
 
-    public void chunkLoad(ChunkEvent.Load event)
+    @SubscribeEvent
+    public static void worldLoad(WorldEvent.Load event)
     {
-        Chunk chunk = event.getChunk();
+        World world = event.getWorld();
+        File file = new File(world.getSaveHandler().getWorldDirectory() + File.separator + MODID + ".dat");
+        if (file.exists())
+        {
+            try
+            {
+                FileInputStream stream = new FileInputStream(file);
+                ArrayList<CSpawnDefinition> spawnDefinitions = new ArrayList<>();
+                for (int i = new CInt().load(stream).value; i > 0; i--)
+                {
+                    CSpawnDefinition spawnDefinition = new CSpawnDefinition().load(stream);
+                    spawnDefinitions.add(spawnDefinition);
+                    for (CWeightedEntity weightedEntity : spawnDefinition.spawnedEntities) UNFOUND_ENTITIES.put(weightedEntity.entityID, weightedEntity);
+                }
+                SPAWN_DEFINITIONS.put(world, spawnDefinitions);
+                stream.close();
+            }
+            catch (IOException e)
+            {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public static void worldSave(WorldEvent.Save event)
+    {
+        //This event happens *after* the world has saved ie. not good for setting values to be saved by vanilla code
+
+        World world = event.getWorld();
+        File file = new File(world.getSaveHandler().getWorldDirectory() + File.separator + MODID + ".dat");
+
+        ArrayList<CSpawnDefinition> spawnDefinitions = SPAWN_DEFINITIONS.get(world);
+        if (spawnDefinitions == null || spawnDefinitions.size() == 0)
+        {
+            while (file.exists()) file.delete();
+            return;
+        }
+
+        if (world.getSaveHandler().getWorldDirectory().exists())
+        {
+            try
+            {
+                FileOutputStream stream = new FileOutputStream(file);
+                new CInt().set(spawnDefinitions.size()).save(stream);
+                for (CSpawnDefinition spawnDefinition : spawnDefinitions) spawnDefinition.save(stream);
+                stream.close();
+            }
+            catch (IOException e)
+            {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public static void worldUnload(WorldEvent.Unload event)
+    {
+        SPAWN_DEFINITIONS.remove(event.getWorld());
+    }
+
+    @SubscribeEvent
+    public static void chunkLoad(ChunkEvent.Load event)
+    {
+        if (event.getWorld().isRemote) return;
+
+        ArrayList<CSpawnDefinition> spawnDefinitions = SPAWN_DEFINITIONS.get(event.getWorld());
+        if (spawnDefinitions == null) return;
+
+        for (CSpawnDefinition spawnDefinition : spawnDefinitions) spawnDefinition.addChunk(event.getChunk());
+    }
+
+    @SubscribeEvent
+    public static void chunkUnload(ChunkEvent.Unload event)
+    {
+        if (event.getWorld().isRemote) return;
+
+        ArrayList<CSpawnDefinition> spawnDefinitions = SPAWN_DEFINITIONS.get(event.getWorld());
+        if (spawnDefinitions == null) return;
+
+        for (CSpawnDefinition spawnDefinition : spawnDefinitions) spawnDefinition.loadedChunks.remove(event.getChunk());
+    }
+
+    @SubscribeEvent
+    public static void entityJoinWorld(EntityJoinWorldEvent event)
+    {
+        Entity entity = event.getEntity();
+        World world = entity.world;
+        if (world.isRemote || !(entity instanceof EntityLiving)) return;
+
+        CWeightedEntity weightedEntity = UNFOUND_ENTITIES.remove(entity.getUniqueID());
+        if (weightedEntity != null) weightedEntity.entity = (EntityLiving) entity;
+    }
+
+    @SubscribeEvent
+    public static void serverTick(TickEvent.ServerTickEvent event)
+    {
+        for (ArrayList<CSpawnDefinition> spawnDefinitions : SPAWN_DEFINITIONS.values())
+        {
+            for (CSpawnDefinition spawnDefinition : spawnDefinitions) spawnDefinition.removeInvalidEntities();
+        }
+    }
+
+
+    protected void removeInvalidEntities()
+    {
+        for (CWeightedEntity weightedEntity : spawnedEntities.toArray(new CWeightedEntity[0]))
+        {
+            if (weightedEntity.entity == null) weightedEntity.entity = (EntityLiving) FMLCommonHandler.instance().getMinecraftServerInstance().getEntityFromUuid(weightedEntity.entityID);
+
+            Entity entity = weightedEntity.entity;
+            if (entity != null && !MCTools.entityIsValid(entity))
+            {
+                spawnedEntities.remove(weightedEntity);
+                weightedEntity.entityID = null;
+                weightedEntity.entity = null;
+                weightedEntities.add(weightedEntity);
+            }
+        }
+    }
+
+    protected void addChunk(Chunk chunk)
+    {
         if (!intersectingChunks.contains(Tools.getLong(chunk.x, chunk.z))) return;
+
+
+        loadedChunks.add(chunk);
 
 
         for (CWeightedEntity weightedEntity : queuedAttempts)
@@ -80,7 +222,7 @@ public class CSpawnDefinition extends Component
         }
 
 
-        weightedEntity.queuedEntity = null;
+        weightedEntity.entity = null;
         weightedEntity.queuedZone = null;
         weightedEntity.queuedPos = null;
         queuedAttempts.remove(weightedEntity);
@@ -89,7 +231,7 @@ public class CSpawnDefinition extends Component
 
     protected boolean trySpawnInternal(CWeightedEntity weightedEntity)
     {
-        EntityLiving entity = weightedEntity.queuedEntity;
+        EntityLiving entity = weightedEntity.entity;
         if (entity == null) entity = (EntityLiving) EntityList.createEntityFromNBT(weightedEntity.entityNBT, world);
         if (entity == null) return false;
 
@@ -102,9 +244,9 @@ public class CSpawnDefinition extends Component
         {
             if (ForgeEventFactory.canEntitySpawn(entity, world, x, y++, z, false) != Event.Result.DENY)
             {
-                weightedEntity.queuedEntity = null;
+                weightedEntity.entity = null;
                 queuedAttempts.remove(weightedEntity);
-                spawnedEntities.put(entity.getPersistentID(), weightedEntity);
+                spawnedEntities.add(weightedEntity);
 
                 entity.setPosition(x, y, z);
                 world.spawnEntity(entity);
