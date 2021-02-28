@@ -4,7 +4,9 @@ import com.fantasticsource.mctools.MCTools;
 import com.fantasticsource.tools.Tools;
 import com.fantasticsource.tools.component.CBoolean;
 import com.fantasticsource.tools.component.CInt;
+import com.fantasticsource.tools.component.CLong;
 import com.fantasticsource.tools.component.Component;
+import com.fantasticsource.tools.datastructures.Pair;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityList;
@@ -24,7 +26,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.fantasticsource.weightedspawnzones.WeightedSpawnZones.MODID;
@@ -34,17 +36,17 @@ public class CSpawnDefinition extends Component
     protected static final HashMap<World, ArrayList<CSpawnDefinition>> SPAWN_DEFINITIONS = new HashMap<>();
     protected static final HashMap<UUID, CWeightedEntity> UNFOUND_ENTITIES = new HashMap<>();
 
-    public World world;
-    public HashSet<CWeightedSpawnZone> weightedZones = new HashSet<>();
-    public HashSet<CWeightedEntity> weightedEntities = new HashSet<>(), queuedAttempts = new HashSet<>(), failedSpawns = new HashSet<>();
-    public HashSet<Long> intersectingChunks = new HashSet<>();
-    public HashMap<CWeightedEntity, Integer> failedAttemptCounts = new HashMap<>();
 
-    public ArrayList<CWeightedEntity> spawnedEntities = new ArrayList<>();
-    protected ArrayList<Chunk> loadedChunks = new ArrayList<>();
+    protected ArrayList<CWeightedEntity> weightedEntities = new ArrayList<>(), spawnedEntities = new ArrayList<>();
+    protected ArrayList<Long> intersectingChunks = new ArrayList<>();
+    protected HashMap<Pair<Integer, Integer>, ArrayList<CWeightedEntity>> queuedAttempts = new HashMap<>();
 
+    public int limit = 10;
     public boolean spawnWithinPlayerLOS = false;
-    public int sameEntityAttempts = 10, limit = 10;
+
+
+    protected World world;
+    protected ArrayList<Chunk> loadedChunks = new ArrayList<>();
 
 
     @SubscribeEvent
@@ -179,9 +181,10 @@ public class CSpawnDefinition extends Component
         loadedChunks.add(chunk);
 
 
-        for (CWeightedEntity weightedEntity : queuedAttempts)
+        ArrayList<CWeightedEntity> queued = queuedAttempts.remove(new Pair<>(chunk.x, chunk.z));
+        if (queued != null)
         {
-            if (world.isBlockLoaded(weightedEntity.queuedPos)) trySpawn(weightedEntity);
+            for (CWeightedEntity weightedEntity : queued) trySpawn(weightedEntity);
         }
 
 
@@ -205,28 +208,21 @@ public class CSpawnDefinition extends Component
         BlockPos pos = weightedEntity.queuedPos;
         if (pos == null) pos = queueRandomPosition(weightedEntity);
 
-        for (int i = failedAttemptCounts.getOrDefault(weightedEntity, 0); i < sameEntityAttempts; i++)
+        if (!world.isBlockLoaded(pos))
         {
-            if (!world.isBlockLoaded(pos))
-            {
-                if (i > 0) failedAttemptCounts.put(weightedEntity, i);
-                queuedAttempts.add(weightedEntity);
-                return;
-            }
-
-
-            if (trySpawnInternal(weightedEntity)) return;
-
-
-            pos = queueRandomPosition(weightedEntity);
+            queuedAttempts.computeIfAbsent(new Pair<>(pos.getX() >> 4, pos.getZ() >> 4), o -> new ArrayList<>()).add(weightedEntity);
+            return;
         }
+
+
+        if (trySpawnInternal(weightedEntity)) return;
 
 
         weightedEntity.entity = null;
         weightedEntity.queuedZone = null;
         weightedEntity.queuedPos = null;
         queuedAttempts.remove(weightedEntity);
-        failedSpawns.add(weightedEntity);
+        weightedEntities.add(weightedEntity);
     }
 
     protected boolean trySpawnInternal(CWeightedEntity weightedEntity)
@@ -265,7 +261,7 @@ public class CSpawnDefinition extends Component
     protected BlockPos queueRandomPosition(CWeightedEntity weightedEntity)
     {
         ArrayList<CWeightedSpawnZone> list = new ArrayList<>();
-        for (CWeightedSpawnZone zone : weightedZones)
+        for (CWeightedSpawnZone zone : weightedEntity.weightedZones)
         {
             for (int i = zone.weight; i > 0; i--) list.add(zone);
         }
@@ -281,12 +277,25 @@ public class CSpawnDefinition extends Component
     @Override
     public CSpawnDefinition write(ByteBuf buf)
     {
-        buf.writeInt(weightedZones.size());
-        for (CWeightedSpawnZone zone : weightedZones) zone.write(buf);
-
         buf.writeInt(weightedEntities.size());
         for (CWeightedEntity entity : weightedEntities) entity.write(buf);
 
+        buf.writeInt(spawnedEntities.size());
+        for (CWeightedEntity weightedEntity : spawnedEntities) weightedEntity.write(buf);
+
+        buf.writeInt(intersectingChunks.size());
+        for (long l : intersectingChunks) buf.writeLong(l);
+
+        buf.writeInt(queuedAttempts.size());
+        for (Map.Entry<Pair<Integer, Integer>, ArrayList<CWeightedEntity>> entry : queuedAttempts.entrySet())
+        {
+            buf.writeInt(entry.getKey().getKey());
+            buf.writeInt(entry.getKey().getValue());
+            buf.writeInt(entry.getValue().size());
+            for (CWeightedEntity weightedEntity : entry.getValue()) weightedEntity.write(buf);
+        }
+
+        buf.writeInt(limit);
         buf.writeBoolean(spawnWithinPlayerLOS);
 
         return this;
@@ -295,12 +304,24 @@ public class CSpawnDefinition extends Component
     @Override
     public CSpawnDefinition read(ByteBuf buf)
     {
-        weightedZones.clear();
-        for (int i = buf.readInt(); i > 0; i--) weightedZones.add(new CWeightedSpawnZone().read(buf));
-
         weightedEntities.clear();
         for (int i = buf.readInt(); i > 0; i--) weightedEntities.add(new CWeightedEntity().read(buf));
 
+        spawnedEntities.clear();
+        for (int i = buf.readInt(); i > 0; i--) spawnedEntities.add(new CWeightedEntity().read(buf));
+
+        intersectingChunks.clear();
+        for (int i = buf.readInt(); i > 0; i--) intersectingChunks.add(buf.readLong());
+
+        queuedAttempts.clear();
+        for (int i = buf.readInt(); i > 0; i--)
+        {
+            ArrayList<CWeightedEntity> list = new ArrayList<>();
+            queuedAttempts.put(new Pair<>(buf.readInt(), buf.readInt()), list);
+            for (int i2 = buf.readInt(); i2 > 0; i2--) list.add(new CWeightedEntity().read(buf));
+        }
+
+        limit = buf.readInt();
         spawnWithinPlayerLOS = buf.readBoolean();
 
         return this;
@@ -310,14 +331,27 @@ public class CSpawnDefinition extends Component
     public CSpawnDefinition save(OutputStream stream)
     {
         CInt ci = new CInt();
-
-        ci.set(weightedZones.size()).save(stream);
-        for (CWeightedSpawnZone zone : weightedZones) zone.save(stream);
+        CLong cl = new CLong();
+        CBoolean cb = new CBoolean();
 
         ci.set(weightedEntities.size()).save(stream);
         for (CWeightedEntity entity : weightedEntities) entity.save(stream);
 
-        new CBoolean().set(spawnWithinPlayerLOS).save(stream);
+        ci.set(spawnedEntities.size()).save(stream);
+        for (CWeightedEntity entity : spawnedEntities) entity.save(stream);
+
+        ci.set(intersectingChunks.size()).save(stream);
+        for (long l : intersectingChunks) cl.set(l).save(stream);
+
+        ci.set(queuedAttempts.size()).save(stream);
+        for (Map.Entry<Pair<Integer, Integer>, ArrayList<CWeightedEntity>> entry : queuedAttempts.entrySet())
+        {
+            ci.set(entry.getKey().getKey()).save(stream).set(entry.getKey().getValue()).save(stream).set(entry.getValue().size()).save(stream);
+            for (CWeightedEntity weightedEntity : entry.getValue()) weightedEntity.save(stream);
+        }
+
+        ci.set(limit).save(stream);
+        cb.set(spawnWithinPlayerLOS).save(stream);
 
         return this;
     }
@@ -326,14 +360,27 @@ public class CSpawnDefinition extends Component
     public CSpawnDefinition load(InputStream stream)
     {
         CInt ci = new CInt();
+        CLong cl = new CLong();
         CBoolean cb = new CBoolean();
-
-        weightedZones.clear();
-        for (int i = ci.load(stream).value; i > 0; i--) weightedZones.add(new CWeightedSpawnZone().load(stream));
 
         weightedEntities.clear();
         for (int i = ci.load(stream).value; i > 0; i--) weightedEntities.add(new CWeightedEntity().load(stream));
 
+        spawnedEntities.clear();
+        for (int i = ci.load(stream).value; i > 0; i--) spawnedEntities.add(new CWeightedEntity().load(stream));
+
+        intersectingChunks.clear();
+        for (int i = ci.load(stream).value; i > 0; i--) intersectingChunks.add(cl.load(stream).value);
+
+        queuedAttempts.clear();
+        for (int i = ci.load(stream).value; i > 0; i--)
+        {
+            ArrayList<CWeightedEntity> list = new ArrayList<>();
+            queuedAttempts.put(new Pair<>(ci.load(stream).value, ci.load(stream).value), list);
+            for (int i2 = ci.load(stream).value; i2 > 0; i2--) list.add(new CWeightedEntity().load(stream));
+        }
+
+        limit = ci.load(stream).value;
         spawnWithinPlayerLOS = cb.load(stream).value;
 
         return this;
