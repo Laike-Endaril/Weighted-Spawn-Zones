@@ -28,6 +28,17 @@ public class CWeightedEntity extends Component
     public UUID entityID = null;
 
 
+    public ArrayList<Long> getIntersectingChunks()
+    {
+        ArrayList<Long> result = new ArrayList<>();
+        for (CWeightedSpawnZone zone : weightedZones)
+        {
+            result.addAll(zone.getIntersectingChunks());
+        }
+        return result;
+    }
+
+
     @Override
     public CWeightedEntity write(ByteBuf buf)
     {

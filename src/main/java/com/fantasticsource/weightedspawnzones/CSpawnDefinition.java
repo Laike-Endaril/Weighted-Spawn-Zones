@@ -38,8 +38,8 @@ public class CSpawnDefinition extends Component
 
 
     protected ArrayList<CWeightedEntity> weightedEntities = new ArrayList<>(), spawnedEntities = new ArrayList<>();
-    protected ArrayList<Long> intersectingChunks = new ArrayList<>();
     protected HashMap<Pair<Integer, Integer>, ArrayList<CWeightedEntity>> queuedAttempts = new HashMap<>();
+    protected ArrayList<Long> intersectingChunks = new ArrayList<>();
 
     public int limit = 10;
     public boolean spawnWithinPlayerLOS = false;
@@ -48,6 +48,87 @@ public class CSpawnDefinition extends Component
     protected World world;
     protected ArrayList<Chunk> loadedChunks = new ArrayList<>();
 
+
+    public void addWeightedEntity(CWeightedEntity weightedEntity)
+    {
+        weightedEntities.add(weightedEntity);
+        for (long l : weightedEntity.getIntersectingChunks())
+        {
+            if (!intersectingChunks.contains(l))
+            {
+                intersectingChunks.add(l);
+                Pair<Integer, Integer> coords = Tools.getIntsFromLong(l);
+                int x = coords.getKey(), z = coords.getValue();
+                if (world.isBlockLoaded(new BlockPos(x, 0, z))) loadedChunks.add(world.getChunkFromChunkCoords(x, z));
+            }
+        }
+    }
+
+    public void removeWeightedEntity(CWeightedEntity weightedEntity)
+    {
+        if (weightedEntities.remove(weightedEntity))
+        {
+            recalcIntersectingChunks();
+            return;
+        }
+
+        if (spawnedEntities.remove(weightedEntity))
+        {
+            recalcIntersectingChunks();
+            return;
+        }
+
+        for (Map.Entry<Pair<Integer, Integer>, ArrayList<CWeightedEntity>> entry : queuedAttempts.entrySet())
+        {
+            if (entry.getValue().remove(weightedEntity))
+            {
+                recalcIntersectingChunks();
+                if (entry.getValue().size() == 0) queuedAttempts.remove(entry.getKey());
+                return;
+            }
+        }
+    }
+
+    protected void recalcIntersectingChunks()
+    {
+        intersectingChunks.clear();
+        for (CWeightedEntity weightedEntity : weightedEntities)
+        {
+            for (long l : weightedEntity.getIntersectingChunks())
+            {
+                if (!intersectingChunks.contains(l))
+                {
+                    intersectingChunks.add(l);
+                    Pair<Integer, Integer> coords = Tools.getIntsFromLong(l);
+                    int x = coords.getKey(), z = coords.getValue();
+                    if (world.isBlockLoaded(new BlockPos(x << 4, 0, z << 4))) loadedChunks.add(world.getChunkFromChunkCoords(x, z));
+                }
+            }
+        }
+        for (CWeightedEntity weightedEntity : spawnedEntities)
+        {
+            for (long l : weightedEntity.getIntersectingChunks())
+            {
+                if (!intersectingChunks.contains(l))
+                {
+                    intersectingChunks.add(l);
+                    Pair<Integer, Integer> coords = Tools.getIntsFromLong(l);
+                    int x = coords.getKey(), z = coords.getValue();
+                    if (world.isBlockLoaded(new BlockPos(x << 4, 0, z << 4))) loadedChunks.add(world.getChunkFromChunkCoords(x, z));
+                }
+            }
+        }
+        for (Pair<Integer, Integer> coords : queuedAttempts.keySet())
+        {
+            int x = coords.getKey(), z = coords.getValue();
+            long l = Tools.getLong(x, z);
+            if (!intersectingChunks.contains(l))
+            {
+                intersectingChunks.add(l);
+                if (world.isBlockLoaded(new BlockPos(x << 4, 0, z << 4))) loadedChunks.add(world.getChunkFromChunkCoords(x, z));
+            }
+        }
+    }
 
     @SubscribeEvent
     public static void worldLoad(WorldEvent.Load event)
@@ -221,7 +302,12 @@ public class CSpawnDefinition extends Component
         weightedEntity.entity = null;
         weightedEntity.queuedZone = null;
         weightedEntity.queuedPos = null;
-        queuedAttempts.remove(weightedEntity);
+
+        Pair<Integer, Integer> pair = new Pair<>(pos.getX() >> 4, pos.getZ() >> 4);
+        ArrayList<CWeightedEntity> list = queuedAttempts.get(pair);
+        list.remove(weightedEntity);
+        if (list.size() == 0) queuedAttempts.remove(pair);
+
         weightedEntities.add(weightedEntity);
     }
 
@@ -241,7 +327,12 @@ public class CSpawnDefinition extends Component
             if (ForgeEventFactory.canEntitySpawn(entity, world, x, y++, z, false) != Event.Result.DENY)
             {
                 weightedEntity.entity = null;
-                queuedAttempts.remove(weightedEntity);
+
+                Pair<Integer, Integer> pair = new Pair<>((int) x >> 4, (int) z >> 4);
+                ArrayList<CWeightedEntity> list = queuedAttempts.get(pair);
+                list.remove(weightedEntity);
+                if (list.size() == 0) queuedAttempts.remove(pair);
+
                 spawnedEntities.add(weightedEntity);
 
                 entity.setPosition(x, y, z);

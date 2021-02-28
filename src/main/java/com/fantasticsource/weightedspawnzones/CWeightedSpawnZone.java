@@ -1,21 +1,37 @@
 package com.fantasticsource.weightedspawnzones;
 
 import com.fantasticsource.mctools.component.CZone;
+import com.fantasticsource.tools.Tools;
 import com.fantasticsource.tools.component.CBoolean;
 import com.fantasticsource.tools.component.CInt;
 import io.netty.buffer.ByteBuf;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 
 public class CWeightedSpawnZone extends CZone
 {
-    int weight = 1;
-    boolean multiplyWeightByVolume = false;
+    public int weight = 1;
+    public boolean multiplyWeightByVolume = false;
 
 
     public CWeightedSpawnZone()
     {
+    }
+
+
+    public ArrayList<Long> getIntersectingChunks()
+    {
+        ArrayList<Long> result = new ArrayList<>();
+        for (int x = min.getX() >> 4; x < max.getX() >> 4; x++)
+        {
+            for (int z = min.getZ() >> 4; z < max.getZ() >> 4; z++)
+            {
+                result.add(Tools.getLong(x, z));
+            }
+        }
+        return result;
     }
 
 
