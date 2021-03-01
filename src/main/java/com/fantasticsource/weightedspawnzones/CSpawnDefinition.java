@@ -44,7 +44,7 @@ public class CSpawnDefinition extends Component
     protected HashMap<Pair<Integer, Integer>, ArrayList<CWeightedEntity>> queuedAttempts = new HashMap<>();
     protected ArrayList<Long> intersectingChunks = new ArrayList<>();
 
-    public int ticksBetweenAttempts = 20, limit = 10, minPlayerDistNoLOS = 16, minPlayerDistLOS = 64;
+    public int ticksBetweenAttempts = 20, limit = 10, destroyAfter = -1, minPlayerDistNoLOS = 16, minPlayerDistLOS = 64;
 
 
     public final int tickOffset = Tools.random(Integer.MAX_VALUE);
@@ -151,11 +151,7 @@ public class CSpawnDefinition extends Component
                     CSpawnDefinition spawnDefinition = new CSpawnDefinition().load(stream);
                     spawnDefinition.world = (WorldServer) world;
                     spawnDefinitions.add(spawnDefinition);
-                    for (CWeightedEntity weightedEntity : spawnDefinition.spawnedEntities)
-                    {
-                        System.out.println(weightedEntity.entityID.toString());
-                        UNFOUND_ENTITIES.put(weightedEntity.entityID, weightedEntity);
-                    }
+                    for (CWeightedEntity weightedEntity : spawnDefinition.spawnedEntities) UNFOUND_ENTITIES.put(weightedEntity.entityID, weightedEntity);
                 }
                 SPAWN_DEFINITIONS.put((WorldServer) world, spawnDefinitions);
                 stream.close();
@@ -279,11 +275,7 @@ public class CSpawnDefinition extends Component
                     weightedEntity.entityID = null;
                     weightedEntities.add(weightedEntity);
                 }
-                else
-                {
-                    System.out.println(entity.getUniqueID().toString());
-                    UNFOUND_ENTITIES.put(entity.getUniqueID(), weightedEntity);
-                }
+                else UNFOUND_ENTITIES.put(entity.getUniqueID(), weightedEntity);
             }
         }
     }
@@ -417,6 +409,16 @@ public class CSpawnDefinition extends Component
                     entity.setPosition(x, y, z);
                     world.spawnEntity(entity);
 
+                    if (destroyAfter > 0 && --destroyAfter == 0)
+                    {
+                        ArrayList<CSpawnDefinition> list2 = SPAWN_DEFINITIONS.get(world);
+                        if (list2 != null)
+                        {
+                            list2.remove(this);
+                            if (list2.size() == 0) SPAWN_DEFINITIONS.remove(world);
+                        }
+                    }
+
                     return true;
                 }
             }
@@ -467,6 +469,7 @@ public class CSpawnDefinition extends Component
         }
 
         buf.writeInt(limit);
+        buf.writeInt(destroyAfter);
         buf.writeInt(minPlayerDistNoLOS);
         buf.writeInt(minPlayerDistLOS);
 
@@ -494,6 +497,7 @@ public class CSpawnDefinition extends Component
         }
 
         limit = buf.readInt();
+        destroyAfter = buf.readInt();
         minPlayerDistNoLOS = buf.readInt();
         minPlayerDistLOS = buf.readInt();
 
@@ -522,7 +526,7 @@ public class CSpawnDefinition extends Component
             for (CWeightedEntity weightedEntity : entry.getValue()) weightedEntity.save(stream);
         }
 
-        ci.set(limit).save(stream).set(minPlayerDistNoLOS).save(stream).set(minPlayerDistLOS).save(stream);
+        ci.set(limit).save(stream).set(destroyAfter).save(stream).set(minPlayerDistNoLOS).save(stream).set(minPlayerDistLOS).save(stream);
 
         return this;
     }
@@ -551,6 +555,7 @@ public class CSpawnDefinition extends Component
         }
 
         limit = ci.load(stream).value;
+        destroyAfter = ci.load(stream).value;
         minPlayerDistNoLOS = ci.load(stream).value;
         minPlayerDistLOS = ci.load(stream).value;
 
