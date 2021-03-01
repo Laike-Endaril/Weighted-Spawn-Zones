@@ -14,7 +14,6 @@ import net.minecraftforge.fml.client.event.ConfigChangedEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppedEvent;
-import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
@@ -38,13 +37,6 @@ public class WeightedSpawnZones
     public static void saveConfig(ConfigChangedEvent.OnConfigChangedEvent event)
     {
         if (event.getModID().equals(MODID)) ConfigManager.sync(MODID, Config.Type.INSTANCE);
-    }
-
-    @Mod.EventHandler
-    public static void serverStarting(FMLServerStoppingEvent event)
-    {
-        CSpawnDefinition.UNFOUND_ENTITIES.clear();
-        CSpawnDefinition.SPAWN_DEFINITIONS.clear();
     }
 
     @Mod.EventHandler
