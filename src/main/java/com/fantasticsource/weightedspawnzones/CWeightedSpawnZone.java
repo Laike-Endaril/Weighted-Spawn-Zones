@@ -24,9 +24,9 @@ public class CWeightedSpawnZone extends CZone
     public ArrayList<Long> getIntersectingChunks()
     {
         ArrayList<Long> result = new ArrayList<>();
-        for (int x = min.getX() >> 4; x < max.getX() >> 4; x++)
+        for (int x = min.getX() >> 4; x <= max.getX() >> 4; x++)
         {
-            for (int z = min.getZ() >> 4; z < max.getZ() >> 4; z++)
+            for (int z = min.getZ() >> 4; z <= max.getZ() >> 4; z++)
             {
                 result.add(Tools.getLong(x, z));
             }

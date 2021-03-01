@@ -1,10 +1,8 @@
 package com.fantasticsource.weightedspawnzones;
 
-import com.fantasticsource.tools.component.CInt;
-import com.fantasticsource.tools.component.CStringUTF8;
-import com.fantasticsource.tools.component.Component;
+import com.fantasticsource.tools.component.*;
 import io.netty.buffer.ByteBuf;
-import net.minecraft.entity.EntityLiving;
+import net.minecraft.entity.Entity;
 import net.minecraft.nbt.JsonToNBT;
 import net.minecraft.nbt.NBTException;
 import net.minecraft.nbt.NBTTagCompound;
@@ -21,11 +19,11 @@ public class CWeightedEntity extends Component
     public NBTTagCompound entityNBT = new NBTTagCompound();
     public int weight = 1;
     public ArrayList<CWeightedSpawnZone> weightedZones = new ArrayList<>();
+    public UUID entityID = null;
 
     public CWeightedSpawnZone queuedZone = null;
     public BlockPos queuedPos = null;
-    public EntityLiving entity = null;
-    public UUID entityID = null;
+    public Entity entity = null;
 
 
     public ArrayList<Long> getIntersectingChunks()
@@ -48,6 +46,9 @@ public class CWeightedEntity extends Component
         buf.writeInt(weightedZones.size());
         for (CWeightedSpawnZone weightedSpawnZone : weightedZones) weightedSpawnZone.write(buf);
 
+        buf.writeBoolean(entityID != null);
+        if (entityID != null) new CUUID().set(entityID).write(buf);
+
         return this;
     }
 
@@ -69,6 +70,8 @@ public class CWeightedEntity extends Component
         weightedZones.clear();
         for (int i = buf.readInt(); i > 0; i--) weightedZones.add(new CWeightedSpawnZone().read(buf));
 
+        if (buf.readBoolean()) entityID = new CUUID().read(buf).value;
+
         return this;
     }
 
@@ -78,6 +81,9 @@ public class CWeightedEntity extends Component
         new CStringUTF8().set(entityNBT.toString()).save(stream);
         new CInt().set(weight).save(stream).set(weightedZones.size()).save(stream);
         for (CWeightedSpawnZone weightedSpawnZone : weightedZones) weightedSpawnZone.save(stream);
+
+        new CBoolean().set(entityID != null).save(stream);
+        if (entityID != null) new CUUID().set(entityID).save(stream);
 
         return this;
     }
@@ -101,6 +107,8 @@ public class CWeightedEntity extends Component
 
         weightedZones.clear();
         for (int i = ci.load(stream).value; i > 0; i--) weightedZones.add(new CWeightedSpawnZone().load(stream));
+
+        if (new CBoolean().load(stream).value) entityID = new CUUID().load(stream).value;
 
         return this;
     }

@@ -1,6 +1,8 @@
 package com.fantasticsource.weightedspawnzones;
 
+import com.fantasticsource.mctools.ImprovedRayTracing;
 import com.fantasticsource.mctools.MCTools;
+import com.fantasticsource.mctools.ServerTickTimer;
 import com.fantasticsource.tools.Tools;
 import com.fantasticsource.tools.component.CBoolean;
 import com.fantasticsource.tools.component.CInt;
@@ -11,14 +13,16 @@ import io.netty.buffer.ByteBuf;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLiving;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
+import net.minecraft.world.WorldServer;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.world.ChunkEvent;
 import net.minecraftforge.event.world.WorldEvent;
-import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.eventhandler.Event;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -33,7 +37,7 @@ import static com.fantasticsource.weightedspawnzones.WeightedSpawnZones.MODID;
 
 public class CSpawnDefinition extends Component
 {
-    protected static final HashMap<World, ArrayList<CSpawnDefinition>> SPAWN_DEFINITIONS = new HashMap<>();
+    protected static final HashMap<WorldServer, ArrayList<CSpawnDefinition>> SPAWN_DEFINITIONS = new HashMap<>();
     protected static final HashMap<UUID, CWeightedEntity> UNFOUND_ENTITIES = new HashMap<>();
 
 
@@ -41,11 +45,11 @@ public class CSpawnDefinition extends Component
     protected HashMap<Pair<Integer, Integer>, ArrayList<CWeightedEntity>> queuedAttempts = new HashMap<>();
     protected ArrayList<Long> intersectingChunks = new ArrayList<>();
 
-    public int limit = 10;
-    public boolean spawnWithinPlayerLOS = false;
+    public int ticksBetweenAttempts = 20, limit = 10, minPlayerDistNoLOS = 16, minPlayerDistLOS = 64;
 
 
-    protected World world;
+    public final int tickOffset = Tools.random(Integer.MAX_VALUE);
+    protected WorldServer world;
     protected ArrayList<Chunk> loadedChunks = new ArrayList<>();
 
 
@@ -134,6 +138,8 @@ public class CSpawnDefinition extends Component
     public static void worldLoad(WorldEvent.Load event)
     {
         World world = event.getWorld();
+        if (world.isRemote) return;
+
         File file = new File(world.getSaveHandler().getWorldDirectory() + File.separator + MODID + ".dat");
         if (file.exists())
         {
@@ -144,10 +150,15 @@ public class CSpawnDefinition extends Component
                 for (int i = new CInt().load(stream).value; i > 0; i--)
                 {
                     CSpawnDefinition spawnDefinition = new CSpawnDefinition().load(stream);
+                    spawnDefinition.world = (WorldServer) world;
                     spawnDefinitions.add(spawnDefinition);
-                    for (CWeightedEntity weightedEntity : spawnDefinition.spawnedEntities) UNFOUND_ENTITIES.put(weightedEntity.entityID, weightedEntity);
+                    for (CWeightedEntity weightedEntity : spawnDefinition.spawnedEntities)
+                    {
+                        System.out.println(weightedEntity.entityID.toString());
+                        UNFOUND_ENTITIES.put(weightedEntity.entityID, weightedEntity);
+                    }
                 }
-                SPAWN_DEFINITIONS.put(world, spawnDefinitions);
+                SPAWN_DEFINITIONS.put((WorldServer) world, spawnDefinitions);
                 stream.close();
             }
             catch (IOException e)
@@ -163,6 +174,8 @@ public class CSpawnDefinition extends Component
         //This event happens *after* the world has saved ie. not good for setting values to be saved by vanilla code
 
         World world = event.getWorld();
+        if (world.isRemote) return;
+
         File file = new File(world.getSaveHandler().getWorldDirectory() + File.separator + MODID + ".dat");
 
         ArrayList<CSpawnDefinition> spawnDefinitions = SPAWN_DEFINITIONS.get(world);
@@ -191,7 +204,10 @@ public class CSpawnDefinition extends Component
     @SubscribeEvent
     public static void worldUnload(WorldEvent.Unload event)
     {
-        SPAWN_DEFINITIONS.remove(event.getWorld());
+        World world = event.getWorld();
+        if (world.isRemote) return;
+
+        SPAWN_DEFINITIONS.remove(world);
     }
 
     @SubscribeEvent
@@ -224,32 +240,51 @@ public class CSpawnDefinition extends Component
         if (world.isRemote || !(entity instanceof EntityLiving)) return;
 
         CWeightedEntity weightedEntity = UNFOUND_ENTITIES.remove(entity.getUniqueID());
-        if (weightedEntity != null) weightedEntity.entity = (EntityLiving) entity;
+        if (weightedEntity != null)
+        {
+            weightedEntity.entity = entity;
+        }
     }
 
     @SubscribeEvent
     public static void serverTick(TickEvent.ServerTickEvent event)
     {
+        if (event.phase != TickEvent.Phase.END) return;
+
+        long tick = ServerTickTimer.currentTick();
         for (ArrayList<CSpawnDefinition> spawnDefinitions : SPAWN_DEFINITIONS.values())
         {
-            for (CSpawnDefinition spawnDefinition : spawnDefinitions) spawnDefinition.removeInvalidEntities();
+            for (CSpawnDefinition spawnDefinition : spawnDefinitions)
+            {
+                spawnDefinition.resetDeadEntities();
+                if ((tick + spawnDefinition.tickOffset) % spawnDefinition.ticksBetweenAttempts == 0) spawnDefinition.tryFillSpawns();
+            }
         }
     }
 
 
-    protected void removeInvalidEntities()
+    protected void resetDeadEntities()
     {
         for (CWeightedEntity weightedEntity : spawnedEntities.toArray(new CWeightedEntity[0]))
         {
-            if (weightedEntity.entity == null) weightedEntity.entity = (EntityLiving) FMLCommonHandler.instance().getMinecraftServerInstance().getEntityFromUuid(weightedEntity.entityID);
-
             Entity entity = weightedEntity.entity;
-            if (entity != null && !MCTools.entityIsValid(entity))
+            if (entity == null) continue;
+
+            if (!MCTools.entityIsValid(entity))
             {
-                spawnedEntities.remove(weightedEntity);
-                weightedEntity.entityID = null;
                 weightedEntity.entity = null;
-                weightedEntities.add(weightedEntity);
+
+                if (entity.isDead)
+                {
+                    spawnedEntities.remove(weightedEntity);
+                    weightedEntity.entityID = null;
+                    weightedEntities.add(weightedEntity);
+                }
+                else
+                {
+                    System.out.println(entity.getUniqueID().toString());
+                    UNFOUND_ENTITIES.put(entity.getUniqueID(), weightedEntity);
+                }
             }
         }
     }
@@ -265,56 +300,66 @@ public class CSpawnDefinition extends Component
         ArrayList<CWeightedEntity> queued = queuedAttempts.remove(new Pair<>(chunk.x, chunk.z));
         if (queued != null)
         {
-            for (CWeightedEntity weightedEntity : queued) trySpawn(weightedEntity);
+            for (CWeightedEntity weightedEntity : queued)
+            {
+                if (!trySpawn(weightedEntity)) weightedEntities.add(weightedEntity);
+            }
         }
 
+        tryFillSpawns();
+    }
 
-        ArrayList<CWeightedEntity> list = new ArrayList<>();
-        for (CWeightedEntity weightedEntity : weightedEntities)
+    protected void tryFillSpawns()
+    {
+        if (world != null && spawnedEntities.size() + queuedAttempts.size() < limit)
         {
-            for (int i = weightedEntity.weight; i > 0; i--) list.add(weightedEntity);
-        }
-        while (list.size() > 0 && spawnedEntities.size() + queuedAttempts.size() < limit)
-        {
-            CWeightedEntity weightedEntity = Tools.choose(list);
-            while (list.remove(weightedEntity)) ;
-            trySpawn(weightedEntity);
+            ArrayList<CWeightedEntity> list = new ArrayList<>();
+            for (CWeightedEntity weightedEntity : weightedEntities)
+            {
+                for (int i = weightedEntity.weight; i > 0; i--) list.add(weightedEntity);
+            }
+            while (list.size() > 0 && spawnedEntities.size() + queuedAttempts.size() < limit)
+            {
+                CWeightedEntity weightedEntity = Tools.choose(list);
+                while (list.remove(weightedEntity)) ;
+                trySpawn(weightedEntity);
+            }
         }
     }
 
-    protected void trySpawn(CWeightedEntity weightedEntity)
+    /**
+     * @return true if an entity was spawned or if an entity spawn attempt was queued
+     */
+    protected boolean trySpawn(CWeightedEntity weightedEntity)
     {
-        weightedEntities.remove(weightedEntity);
-
         BlockPos pos = weightedEntity.queuedPos;
         if (pos == null) pos = queueRandomPosition(weightedEntity);
 
         if (!world.isBlockLoaded(pos))
         {
+            weightedEntities.remove(weightedEntity);
             queuedAttempts.computeIfAbsent(new Pair<>(pos.getX() >> 4, pos.getZ() >> 4), o -> new ArrayList<>()).add(weightedEntity);
-            return;
+            return true;
         }
 
 
-        if (trySpawnInternal(weightedEntity)) return;
+        if (trySpawnInternal(weightedEntity))
+        {
+            weightedEntities.remove(weightedEntity);
+            return true;
+        }
 
 
         weightedEntity.entity = null;
         weightedEntity.queuedZone = null;
         weightedEntity.queuedPos = null;
-
-        Pair<Integer, Integer> pair = new Pair<>(pos.getX() >> 4, pos.getZ() >> 4);
-        ArrayList<CWeightedEntity> list = queuedAttempts.get(pair);
-        list.remove(weightedEntity);
-        if (list.size() == 0) queuedAttempts.remove(pair);
-
-        weightedEntities.add(weightedEntity);
+        return false;
     }
 
     protected boolean trySpawnInternal(CWeightedEntity weightedEntity)
     {
-        EntityLiving entity = weightedEntity.entity;
-        if (entity == null) entity = (EntityLiving) EntityList.createEntityFromNBT(weightedEntity.entityNBT, world);
+        Entity entity = weightedEntity.entity;
+        if (entity == null) entity = EntityList.createEntityFromNBT(weightedEntity.entityNBT, world);
         if (entity == null) return false;
 
 
@@ -324,24 +369,60 @@ public class CSpawnDefinition extends Component
         int yStart = pos.getY();
         do
         {
-            if (ForgeEventFactory.canEntitySpawn(entity, world, x, y++, z, false) != Event.Result.DENY)
+            boolean canSpawn = !(entity instanceof EntityLiving) || ForgeEventFactory.canEntitySpawn((EntityLiving) entity, world, x, y, z, false) != Event.Result.DENY;
+            if (canSpawn)
             {
-                weightedEntity.entity = null;
+                ArrayList<Vec3d> playerVecs = new ArrayList<>();
+                Vec3d vec = new Vec3d(x, y + entity.height * 0.5, z), vec2;
+                int reqDistNoLOSSquared = minPlayerDistNoLOS * minPlayerDistNoLOS, reqDistLOSSquared = minPlayerDistLOS * minPlayerDistLOS;
+                double distSquared;
+                for (EntityPlayer player : world.playerEntities)
+                {
+                    vec2 = new Vec3d(player.posX, player.posY + player.eyeHeight, player.posZ);
+                    distSquared = vec.squareDistanceTo(vec2);
+                    if (distSquared < reqDistNoLOSSquared)
+                    {
+                        canSpawn = false;
+                        break;
+                    }
+                    if (distSquared < reqDistLOSSquared) playerVecs.add(vec2);
+                }
 
-                Pair<Integer, Integer> pair = new Pair<>((int) x >> 4, (int) z >> 4);
-                ArrayList<CWeightedEntity> list = queuedAttempts.get(pair);
-                list.remove(weightedEntity);
-                if (list.size() == 0) queuedAttempts.remove(pair);
+                if (canSpawn)
+                {
+                    for (Vec3d vec3 : playerVecs)
+                    {
+                        if (ImprovedRayTracing.isUnobstructed(world, vec, vec3, false))
+                        {
+                            canSpawn = false;
+                            break;
+                        }
+                    }
+                }
 
-                spawnedEntities.add(weightedEntity);
+                if (canSpawn)
+                {
+                    weightedEntity.entity = entity;
+                    weightedEntity.entityID = entity.getUniqueID();
 
-                entity.setPosition(x, y, z);
-                world.spawnEntity(entity);
+                    Pair<Integer, Integer> pair = new Pair<>((int) x >> 4, (int) z >> 4);
+                    ArrayList<CWeightedEntity> list = queuedAttempts.get(pair);
+                    if (list != null)
+                    {
+                        list.remove(weightedEntity);
+                        if (list.size() == 0) queuedAttempts.remove(pair);
+                    }
 
-                return true;
+                    spawnedEntities.add(weightedEntity);
+
+                    entity.setPosition(x, y, z);
+                    world.spawnEntity(entity);
+
+                    return true;
+                }
             }
 
-            if (y > maxY) y = weightedEntity.queuedZone.getMin().getY();
+            if (++y > maxY) y = weightedEntity.queuedZone.getMin().getY();
         }
         while (y != yStart);
 
@@ -387,7 +468,8 @@ public class CSpawnDefinition extends Component
         }
 
         buf.writeInt(limit);
-        buf.writeBoolean(spawnWithinPlayerLOS);
+        buf.writeInt(minPlayerDistNoLOS);
+        buf.writeInt(minPlayerDistLOS);
 
         return this;
     }
@@ -413,7 +495,8 @@ public class CSpawnDefinition extends Component
         }
 
         limit = buf.readInt();
-        spawnWithinPlayerLOS = buf.readBoolean();
+        minPlayerDistNoLOS = buf.readInt();
+        minPlayerDistLOS = buf.readInt();
 
         return this;
     }
@@ -423,7 +506,6 @@ public class CSpawnDefinition extends Component
     {
         CInt ci = new CInt();
         CLong cl = new CLong();
-        CBoolean cb = new CBoolean();
 
         ci.set(weightedEntities.size()).save(stream);
         for (CWeightedEntity entity : weightedEntities) entity.save(stream);
@@ -441,8 +523,7 @@ public class CSpawnDefinition extends Component
             for (CWeightedEntity weightedEntity : entry.getValue()) weightedEntity.save(stream);
         }
 
-        ci.set(limit).save(stream);
-        cb.set(spawnWithinPlayerLOS).save(stream);
+        ci.set(limit).save(stream).set(minPlayerDistNoLOS).save(stream).set(minPlayerDistLOS).save(stream);
 
         return this;
     }
@@ -452,7 +533,6 @@ public class CSpawnDefinition extends Component
     {
         CInt ci = new CInt();
         CLong cl = new CLong();
-        CBoolean cb = new CBoolean();
 
         weightedEntities.clear();
         for (int i = ci.load(stream).value; i > 0; i--) weightedEntities.add(new CWeightedEntity().load(stream));
@@ -472,7 +552,8 @@ public class CSpawnDefinition extends Component
         }
 
         limit = ci.load(stream).value;
-        spawnWithinPlayerLOS = cb.load(stream).value;
+        minPlayerDistNoLOS = ci.load(stream).value;
+        minPlayerDistLOS = ci.load(stream).value;
 
         return this;
     }
