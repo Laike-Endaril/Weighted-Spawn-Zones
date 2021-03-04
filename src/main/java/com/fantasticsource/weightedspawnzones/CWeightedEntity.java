@@ -3,9 +3,6 @@ package com.fantasticsource.weightedspawnzones;
 import com.fantasticsource.tools.component.*;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.entity.Entity;
-import net.minecraft.nbt.JsonToNBT;
-import net.minecraft.nbt.NBTException;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.fml.common.network.ByteBufUtils;
 
@@ -16,7 +13,7 @@ import java.util.UUID;
 
 public class CWeightedEntity extends Component
 {
-    public NBTTagCompound entityNBT = new NBTTagCompound();
+    public String entityDefName = null;
     public int weight = 1;
     public ArrayList<CWeightedSpawnZone> weightedZones = new ArrayList<>();
     public UUID entityID = null;
@@ -40,7 +37,7 @@ public class CWeightedEntity extends Component
     @Override
     public CWeightedEntity write(ByteBuf buf)
     {
-        ByteBufUtils.writeUTF8String(buf, entityNBT.toString());
+        ByteBufUtils.writeUTF8String(buf, entityDefName);
         buf.writeInt(weight);
 
         buf.writeInt(weightedZones.size());
@@ -55,16 +52,7 @@ public class CWeightedEntity extends Component
     @Override
     public CWeightedEntity read(ByteBuf buf)
     {
-        try
-        {
-            entityNBT = JsonToNBT.getTagFromJson(ByteBufUtils.readUTF8String(buf));
-        }
-        catch (NBTException e)
-        {
-            e.printStackTrace();
-            return null;
-        }
-
+        entityDefName = ByteBufUtils.readUTF8String(buf);
         weight = buf.readInt();
 
         weightedZones.clear();
@@ -78,7 +66,7 @@ public class CWeightedEntity extends Component
     @Override
     public CWeightedEntity save(OutputStream stream)
     {
-        new CStringUTF8().set(entityNBT.toString()).save(stream);
+        new CStringUTF8().set(entityDefName).save(stream);
         new CInt().set(weight).save(stream).set(weightedZones.size()).save(stream);
         for (CWeightedSpawnZone weightedSpawnZone : weightedZones) weightedSpawnZone.save(stream);
 
@@ -93,16 +81,7 @@ public class CWeightedEntity extends Component
     {
         CInt ci = new CInt();
 
-        try
-        {
-            entityNBT = JsonToNBT.getTagFromJson(new CStringUTF8().load(stream).value);
-        }
-        catch (NBTException e)
-        {
-            e.printStackTrace();
-            return null;
-        }
-
+        entityDefName = new CStringUTF8().load(stream).value;
         weight = ci.load(stream).value;
 
         weightedZones.clear();

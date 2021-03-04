@@ -1,3 +1,5 @@
+Allow spawn definitions with empty entities (effectively lets you give a chance of not spawning anything if you add it to a pool)
+
 SAVED ENTITIES
 A list of saved entities which can be used in spawn zones
 You can edit the name and description of each one (both shown in tooltip)

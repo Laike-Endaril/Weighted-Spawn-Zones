@@ -92,6 +92,7 @@ public class CSpawnDefinition extends Component
         }
     }
 
+
     protected void recalcIntersectingChunks()
     {
         intersectingChunks.clear();
@@ -350,7 +351,7 @@ public class CSpawnDefinition extends Component
     protected boolean trySpawnInternal(CWeightedEntity weightedEntity)
     {
         Entity entity = weightedEntity.entity;
-        if (entity == null) entity = EntityList.createEntityFromNBT(weightedEntity.entityNBT, world);
+        if (entity == null) entity = EntityList.createEntityFromNBT(WeightedSpawnZones.ENTITY_DEFINITIONS.get(weightedEntity.entityDefName).compound, world);
         if (entity == null) return false;
 
 
