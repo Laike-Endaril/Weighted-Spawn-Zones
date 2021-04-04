@@ -2,6 +2,7 @@ package com.fantasticsource.weightedspawnzones;
 
 import com.fantasticsource.mctools.MCTools;
 import com.fantasticsource.tools.component.CInt;
+import com.fantasticsource.weightedspawnzones.blocksanditems.BlocksAndItems;
 import net.minecraft.nbt.JsonToNBT;
 import net.minecraft.nbt.NBTException;
 import net.minecraft.util.math.BlockPos;
@@ -26,7 +27,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-@Mod(modid = WeightedSpawnZones.MODID, name = WeightedSpawnZones.NAME, version = WeightedSpawnZones.VERSION, dependencies = "required-after:fantasticlib@[1.12.2.044zg,)")
+@Mod(modid = WeightedSpawnZones.MODID, name = WeightedSpawnZones.NAME, version = WeightedSpawnZones.VERSION, dependencies = "required-after:fantasticlib@[1.12.2.044zg,);required-after:nbtmanipulator@[1.12.2.004a,)")
 public class WeightedSpawnZones
 {
     public static final String MODID = "weightedspawnzones";
@@ -41,6 +42,7 @@ public class WeightedSpawnZones
     {
         MinecraftForge.EVENT_BUS.register(WeightedSpawnZones.class);
         MinecraftForge.EVENT_BUS.register(CSpawnDefinition.class);
+        MinecraftForge.EVENT_BUS.register(BlocksAndItems.class);
 
 
         if (ENTITY_DEF_FILE.exists())

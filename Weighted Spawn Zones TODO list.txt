@@ -1,9 +1,14 @@
+Entity editor...
+If raytrace collides with existing entity within reach, highlight that entity
+else show "ghost" of currently selected entity some distance in front of player (raytrace), colliding with solids and adjusting for entity size (keeping entity out of walls) (make said entity face player)
+* Show controls and refName/RL of currently selected entity on bottom left of screen
+* Rename item to refName and RL of currently selected entity
+
+Spawn Zone editor...
+* While holding - renders spawn zones.  Also renders
+* Right click entity - save entity prompt (name, description, nbt editor)
+* Right click air - main GUI
+
+Show name and tooltip of saved entities somewhere
+
 Allow spawn definitions with empty entities (effectively lets you give a chance of not spawning anything if you add it to a pool)
-
-SAVED ENTITIES
-A list of saved entities which can be used in spawn zones
-You can edit the name and description of each one (both shown in tooltip)
-
-When any part of any zone in a definition is loaded, that definition queues possible spawn points and entities, up to its limits
-Queued spawns are not actually attempted until their block positions are loaded (check on chunk load)
-When an attempt fails, the entity is kept and the position is recalculated up to "sameEntityAttempts" times
