@@ -27,7 +27,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-@Mod(modid = WeightedSpawnZones.MODID, name = WeightedSpawnZones.NAME, version = WeightedSpawnZones.VERSION, dependencies = "required-after:fantasticlib@[1.12.2.044zg,);required-after:nbtmanipulator@[1.12.2.004a,)")
+@Mod(modid = WeightedSpawnZones.MODID, name = WeightedSpawnZones.NAME, version = WeightedSpawnZones.VERSION, dependencies = "required-after:fantasticlib@[1.12.2.044zzb,);required-after:nbtmanipulator@[1.12.2.004a,)")
 public class WeightedSpawnZones
 {
     public static final String MODID = "weightedspawnzones";
