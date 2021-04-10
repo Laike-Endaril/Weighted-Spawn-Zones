@@ -14,24 +14,24 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 
-public class CEntityDefinition extends Component
+public class CEntityTemplate extends Component
 {
     protected String name = null;
     protected ArrayList<String> description = new ArrayList<>();
     protected NBTTagCompound compound = new NBTTagCompound();
 
-    public CEntityDefinition()
+    public CEntityTemplate()
     {
     }
 
-    public CEntityDefinition(String name)
+    public CEntityTemplate(String name)
     {
         setName(name);
     }
 
     protected void setName(String name)
     {
-        CEntityDefinition found = WeightedSpawnZones.ENTITY_DEFINITIONS.get(this.name);
+        CEntityTemplate found = WeightedSpawnZones.ENTITY_DEFINITIONS.get(this.name);
         if (this == found)
         {
             found = WeightedSpawnZones.ENTITY_DEFINITIONS.get(name);
@@ -49,7 +49,7 @@ public class CEntityDefinition extends Component
     }
 
     @Override
-    public CEntityDefinition write(ByteBuf buf)
+    public CEntityTemplate write(ByteBuf buf)
     {
         ByteBufUtils.writeUTF8String(buf, name);
 
@@ -62,7 +62,7 @@ public class CEntityDefinition extends Component
     }
 
     @Override
-    public CEntityDefinition read(ByteBuf buf)
+    public CEntityTemplate read(ByteBuf buf)
     {
         name = ByteBufUtils.readUTF8String(buf);
 
@@ -83,7 +83,7 @@ public class CEntityDefinition extends Component
     }
 
     @Override
-    public CEntityDefinition save(OutputStream stream)
+    public CEntityTemplate save(OutputStream stream)
     {
         CStringUTF8 cs = new CStringUTF8();
 
@@ -98,7 +98,7 @@ public class CEntityDefinition extends Component
     }
 
     @Override
-    public CEntityDefinition load(InputStream stream)
+    public CEntityTemplate load(InputStream stream)
     {
         CStringUTF8 cs = new CStringUTF8();
 

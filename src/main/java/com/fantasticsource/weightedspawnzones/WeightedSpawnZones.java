@@ -14,11 +14,13 @@ import net.minecraftforge.common.config.Config;
 import net.minecraftforge.common.config.ConfigManager;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.client.event.ConfigChangedEvent;
+import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppedEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.relauncher.Side;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -27,7 +29,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-@Mod(modid = WeightedSpawnZones.MODID, name = WeightedSpawnZones.NAME, version = WeightedSpawnZones.VERSION, dependencies = "required-after:fantasticlib@[1.12.2.044zzb,);required-after:nbtmanipulator@[1.12.2.004a,)")
+@Mod(modid = WeightedSpawnZones.MODID, name = WeightedSpawnZones.NAME, version = WeightedSpawnZones.VERSION, dependencies = "required-after:fantasticlib@[1.12.2.044zzd,);required-after:nbtmanipulator@[1.12.2.004f,)")
 public class WeightedSpawnZones
 {
     public static final String MODID = "weightedspawnzones";
@@ -35,7 +37,7 @@ public class WeightedSpawnZones
     public static final String VERSION = "1.12.2.000";
 
     protected static final File ENTITY_DEF_FILE = new File(MCTools.getConfigDir() + MODID + ".dat");
-    protected static final HashMap<String, CEntityDefinition> ENTITY_DEFINITIONS = new HashMap<>();
+    protected static final HashMap<String, CEntityTemplate> ENTITY_DEFINITIONS = new HashMap<>();
 
     @Mod.EventHandler
     public static void preInit(FMLPreInitializationEvent event) throws NBTException
@@ -52,7 +54,7 @@ public class WeightedSpawnZones
                 FileInputStream stream = new FileInputStream(ENTITY_DEF_FILE);
                 for (int i = new CInt().load(stream).value; i > 0; i--)
                 {
-                    CEntityDefinition entityDefinition = new CEntityDefinition().load(stream);
+                    CEntityTemplate entityDefinition = new CEntityTemplate().load(stream);
                     ENTITY_DEFINITIONS.put(entityDefinition.name, entityDefinition);
                 }
                 stream.close();
@@ -67,10 +69,16 @@ public class WeightedSpawnZones
         if (MCTools.devEnv() && ENTITY_DEFINITIONS.size() == 0)
         {
             System.out.println(TextFormatting.AQUA + "Adding test entity definition");
-            CEntityDefinition test = new CEntityDefinition("Test");
+            CEntityTemplate test = new CEntityTemplate("Test");
             test.description.add("A husk with persistence and invulnerable turned on (does not actually seem to make it invulnerable)");
             test.compound = JsonToNBT.getTagFromJson("{PersistenceRequired:1b,Attributes:[{Base:20.0d,Name:\"generic.maxHealth\"},{Base:0.0d,Modifiers:[{UUIDMost:5852893299261065939L,UUIDLeast:-9104073199294987705L,Amount:0.036573104176229713d,Operation:0,Name:\"Randomspawnbonus\"}],Name:\"generic.knockbackResistance\"},{Base:0.23000000417232513d,Name:\"generic.movementSpeed\"},{Base:2.0d,Name:\"generic.armor\"},{Base:0.0d,Name:\"generic.armorToughness\"},{Base:1.0d,Name:\"forge.swimSpeed\"},{Base:35.0d,Modifiers:[{UUIDMost:1016541881440161498L,UUIDLeast:-5301211752535089558L,Amount:0.05163393930534082d,Operation:1,Name:\"Randomspawnbonus\"}],Name:\"generic.followRange\"},{Base:3.0d,Name:\"generic.attackDamage\"},{Base:0.014275049799433781d,Name:\"zombie.spawnReinforcements\"}],Invulnerable:1b,HandDropChances:[0.085f,0.085f],id:\"minecraft:husk\",Health:20.0f,Air:300s,OnGround:1b,Rotation:[122.1131f,0.0f],HandItems:[{},{}],ArmorDropChances:[1.085f,0.085f,0.085f,0.085f],Pos:[1005.5d,65.0d,-1.5d],Fire:-1s,ArmorItems:[{},{},{},{}],}");
             addEntityDefinition(test);
+        }
+
+
+        if (FMLCommonHandler.instance().getEffectiveSide() == Side.CLIENT)
+        {
+            MinecraftForge.EVENT_BUS.register(NBTGUIHacks.class);
         }
     }
 
@@ -82,7 +90,7 @@ public class WeightedSpawnZones
         {
             FileOutputStream stream = new FileOutputStream(ENTITY_DEF_FILE);
             new CInt().set(ENTITY_DEFINITIONS.size()).save(stream);
-            for (CEntityDefinition entityDefinition : ENTITY_DEFINITIONS.values()) entityDefinition.save(stream);
+            for (CEntityTemplate entityDefinition : ENTITY_DEFINITIONS.values()) entityDefinition.save(stream);
             stream.close();
         }
         catch (IOException e)
@@ -137,7 +145,7 @@ public class WeightedSpawnZones
     }
 
 
-    public static void addEntityDefinition(CEntityDefinition entityDefinition)
+    public static void addEntityDefinition(CEntityTemplate entityDefinition)
     {
         if (ENTITY_DEFINITIONS.containsKey(entityDefinition.name))
         {
@@ -149,7 +157,7 @@ public class WeightedSpawnZones
         saveEntityDefinitions();
     }
 
-    public static void removeEntityDefinition(CEntityDefinition entityDefinition)
+    public static void removeEntityDefinition(CEntityTemplate entityDefinition)
     {
         ENTITY_DEFINITIONS.remove(entityDefinition.name);
         saveEntityDefinitions();

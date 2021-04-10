@@ -1,8 +1,10 @@
 package com.fantasticsource.weightedspawnzones.blocksanditems;
 
+import com.fantasticsource.nbtmanipulator.NBTManipulator;
 import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ActionResult;
@@ -36,8 +38,7 @@ public class ItemEntityEditor extends Item
         }
 
         //Right click entity
-        System.out.println("open specific entity menu");
-//        tooltip.add("Right click entity to edit it, save it as a spawnable entity, or replace it with another entity");
+        if (player instanceof EntityPlayerMP && !(target instanceof EntityPlayer)) NBTManipulator.entity((EntityPlayerMP) player, target);
         return true;
     }
 
@@ -53,7 +54,6 @@ public class ItemEntityEditor extends Item
         System.out.println("place entity");
         if (false)
         {
-
             return new ActionResult<>(EnumActionResult.SUCCESS, player.getHeldItem(handIn));
         }
 
