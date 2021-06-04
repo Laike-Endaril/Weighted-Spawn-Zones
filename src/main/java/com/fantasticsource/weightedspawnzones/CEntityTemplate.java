@@ -1,61 +1,45 @@
 package com.fantasticsource.weightedspawnzones;
 
-import com.fantasticsource.tools.component.CInt;
 import com.fantasticsource.tools.component.CStringUTF8;
 import com.fantasticsource.tools.component.Component;
 import io.netty.buffer.ByteBuf;
+import net.minecraft.entity.Entity;
 import net.minecraft.nbt.JsonToNBT;
 import net.minecraft.nbt.NBTException;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.fml.common.network.ByteBufUtils;
 
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
 
 public class CEntityTemplate extends Component
 {
-    protected String name = null;
-    protected ArrayList<String> description = new ArrayList<>();
-    protected NBTTagCompound compound = new NBTTagCompound();
+    public String name = "", description = "";
+    public NBTTagCompound compound = new NBTTagCompound();
+
 
     public CEntityTemplate()
     {
     }
 
-    public CEntityTemplate(String name)
+    public CEntityTemplate(Entity target)
     {
-        setName(name);
+        this("", "", target.serializeNBT());
     }
 
-    protected void setName(String name)
+    public CEntityTemplate(String name, String description, NBTTagCompound compound)
     {
-        CEntityTemplate found = WeightedSpawnZones.ENTITY_DEFINITIONS.get(this.name);
-        if (this == found)
-        {
-            found = WeightedSpawnZones.ENTITY_DEFINITIONS.get(name);
-            if (found != null)
-            {
-                System.err.println(TextFormatting.RED + "Cannot rename entity definition, as name is already in use: " + name);
-                return;
-            }
-
-            WeightedSpawnZones.ENTITY_DEFINITIONS.remove(this.name);
-            this.name = name;
-            WeightedSpawnZones.addEntityDefinition(this);
-        }
-        else this.name = name;
+        this.name = name;
+        this.description = description;
+        this.compound = compound;
     }
+
 
     @Override
     public CEntityTemplate write(ByteBuf buf)
     {
         ByteBufUtils.writeUTF8String(buf, name);
-
-        buf.writeInt(description.size());
-        for (String s : description) ByteBufUtils.writeUTF8String(buf, s);
-
+        ByteBufUtils.writeUTF8String(buf, description);
         ByteBufUtils.writeUTF8String(buf, compound.toString());
 
         return this;
@@ -65,9 +49,7 @@ public class CEntityTemplate extends Component
     public CEntityTemplate read(ByteBuf buf)
     {
         name = ByteBufUtils.readUTF8String(buf);
-
-        description.clear();
-        for (int i = buf.readInt(); i > 0; i--) description.add(ByteBufUtils.readUTF8String(buf));
+        description = ByteBufUtils.readUTF8String(buf);
 
         try
         {
@@ -87,12 +69,7 @@ public class CEntityTemplate extends Component
     {
         CStringUTF8 cs = new CStringUTF8();
 
-        cs.set(name).save(stream);
-
-        new CInt().set(description.size()).save(stream);
-        for (String s : description) cs.set(s).save(stream);
-
-        cs.set(compound.toString()).save(stream);
+        cs.set(name).save(stream).set(description).save(stream).set(compound.toString()).save(stream);
 
         return this;
     }
@@ -103,9 +80,7 @@ public class CEntityTemplate extends Component
         CStringUTF8 cs = new CStringUTF8();
 
         name = cs.load(stream).value;
-
-        description.clear();
-        for (int i = new CInt().load(stream).value; i > 0; i--) description.add(cs.load(stream).value);
+        description = cs.load(stream).value;
 
         try
         {

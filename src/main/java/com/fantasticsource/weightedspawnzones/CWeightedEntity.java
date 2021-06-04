@@ -13,7 +13,7 @@ import java.util.UUID;
 
 public class CWeightedEntity extends Component
 {
-    public String entityDefName = null;
+    public String templateName = null;
     public int weight = 1;
     public ArrayList<CWeightedSpawnZone> weightedZones = new ArrayList<>();
     public UUID entityID = null;
@@ -37,7 +37,7 @@ public class CWeightedEntity extends Component
     @Override
     public CWeightedEntity write(ByteBuf buf)
     {
-        ByteBufUtils.writeUTF8String(buf, entityDefName);
+        ByteBufUtils.writeUTF8String(buf, templateName);
         buf.writeInt(weight);
 
         buf.writeInt(weightedZones.size());
@@ -52,7 +52,7 @@ public class CWeightedEntity extends Component
     @Override
     public CWeightedEntity read(ByteBuf buf)
     {
-        entityDefName = ByteBufUtils.readUTF8String(buf);
+        templateName = ByteBufUtils.readUTF8String(buf);
         weight = buf.readInt();
 
         weightedZones.clear();
@@ -66,7 +66,7 @@ public class CWeightedEntity extends Component
     @Override
     public CWeightedEntity save(OutputStream stream)
     {
-        new CStringUTF8().set(entityDefName).save(stream);
+        new CStringUTF8().set(templateName).save(stream);
         new CInt().set(weight).save(stream).set(weightedZones.size()).save(stream);
         for (CWeightedSpawnZone weightedSpawnZone : weightedZones) weightedSpawnZone.save(stream);
 
@@ -81,7 +81,7 @@ public class CWeightedEntity extends Component
     {
         CInt ci = new CInt();
 
-        entityDefName = new CStringUTF8().load(stream).value;
+        templateName = new CStringUTF8().load(stream).value;
         weight = ci.load(stream).value;
 
         weightedZones.clear();

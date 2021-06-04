@@ -1,6 +1,8 @@
 package com.fantasticsource.weightedspawnzones.blocksanditems;
 
 import com.fantasticsource.nbtmanipulator.NBTManipulator;
+import com.fantasticsource.weightedspawnzones.CEntityTemplate;
+import com.fantasticsource.weightedspawnzones.Network;
 import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
@@ -38,7 +40,11 @@ public class ItemEntityEditor extends Item
         }
 
         //Right click entity
-        if (player instanceof EntityPlayerMP && !(target instanceof EntityPlayer)) NBTManipulator.entity((EntityPlayerMP) player, target);
+        if (player instanceof EntityPlayerMP && !(target instanceof EntityPlayer))
+        {
+            Network.WRAPPER.sendTo(new Network.NextEditedEntityTemplatePacket(new CEntityTemplate(target)), (EntityPlayerMP) player);
+            NBTManipulator.entity((EntityPlayerMP) player, target);
+        }
         return true;
     }
 
